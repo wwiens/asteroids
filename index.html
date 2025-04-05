@@ -7,14 +7,45 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Score and Lives Display -->
+    <!-- Start Screen Overlay -->
+    <div id="startScreen">
+        <h1>ASTEROIDS</h1>
+        <div id="highScoreList">
+            <h2>High Scores</h2>
+            <ol>
+                <li><span class="initials">---</span> <span class="score">0</span></li>
+                <li><span class="initials">---</span> <span class="score">0</span></li>
+                <li><span class="initials">---</span> <span class="score">0</span></li>
+            </ol>
+        </div>
+        <p class="instructions">Press SPACEBAR to Start</p>
+        <p class="controls">
+            Controls: Arrows: Rotate & Thrust | Spacebar: Shoot | Ctrl: Hyperspace
+        </p>
+    </div>
+
+    <!-- Game Over Screen Overlay -->
+    <div id="gameOverScreen" style="display: none;">
+        <div id="gameOverMessage">
+            <h2>GAME OVER</h2>
+            <!-- Final score and restart instruction added by JS -->
+            <p>Press R to Return to Title</p>
+        </div>
+        <div id="newHighScoreInput" style="display: none;">
+            <h2>New High Score!</h2>
+            <p>Your Score: <span id="finalScoreDisplay">0</span></p>
+            <label for="initialsInput">Enter Initials (3 chars):</label>
+            <input type="text" id="initialsInput" maxlength="3" size="3">
+            <button id="submitScoreButton">Submit</button>
+        </div>
+    </div>
+
+    <!-- In-Game Score and Lives Display -->
     <div id="scoreDisplay">Score: 0</div>
     <div id="livesDisplay">Lives: 3</div>
-    <div id="gameOverDisplay" style="display: none;">
-        GAME OVER<br>Press R to Restart
-    </div>
-    <!-- Three.js library -->
-    <!-- Your game script -->
+
+    <!-- Three.js library is loaded via import in script.js -->
+    <!-- Game script (loaded as module) -->
     <script type="module" src="script.js"></script>
 </body>
 </html>

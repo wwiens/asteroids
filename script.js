@@ -1,9 +1,9 @@
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 
 // --- Game Settings ---
-// Use let for dynamic sizing
-let GAME_WIDTH = window.innerWidth;
-let GAME_HEIGHT = window.innerHeight;
+// Use fixed dimensions again
+const GAME_WIDTH = 1000;
+const GAME_HEIGHT = 750;
 const SHIP_SIZE = 90; // Base size for the 3D model (WAS 60)
 const SHIP_THRUST = 0.1;
 const FRICTION = 0.99; // Multiplicative friction
@@ -39,10 +39,22 @@ let asteroidTextures = []; // Array for preloaded asteroid textures
 let shipTextureA; // Texture for normal ship
 let shipTextureB; // Texture for ship with thrust
 
+let gameState = 'titleScreen'; // Initial state
+let topScores = []; // Array of {initials, score}
+const HIGH_SCORE_KEY = 'asteroidsTopScoresV1'; // Use a unique key
+const MAX_HIGH_SCORES = 3;
+
 // DOM Elements
 const scoreDisplay = document.getElementById('scoreDisplay');
 const livesDisplay = document.getElementById('livesDisplay');
-const gameOverDisplay = document.getElementById('gameOverDisplay');
+const startScreen = document.getElementById('startScreen');
+const highScoreListElement = document.getElementById('highScoreList').querySelector('ol');
+const gameOverScreen = document.getElementById('gameOverScreen');
+const gameOverMessage = document.getElementById('gameOverMessage');
+const newHighScoreInput = document.getElementById('newHighScoreInput');
+const finalScoreDisplay = document.getElementById('finalScoreDisplay');
+const initialsInput = document.getElementById('initialsInput');
+const submitScoreButton = document.getElementById('submitScoreButton');
 
 // --- Asset Preloading ---
 const ASSET_PATHS = {
@@ -83,14 +95,81 @@ async function preloadAssets() {
     }
 }
 
+// --- High Score Logic ---
+function loadTopScores() {
+    try {
+        const storedScores = localStorage.getItem(HIGH_SCORE_KEY);
+        if (storedScores) {
+            topScores = JSON.parse(storedScores);
+        } else {
+            // Initialize with defaults if nothing stored
+            topScores = [];
+        }
+    } catch (e) {
+        console.error("Error loading/parsing high scores:", e);
+        topScores = [];
+    }
+
+    // Ensure array has default structure, is sorted, and capped
+    while (topScores.length < MAX_HIGH_SCORES) {
+        topScores.push({ initials: '---', score: 0 });
+    }
+    topScores.sort((a, b) => b.score - a.score); // Sort descending
+    topScores = topScores.slice(0, MAX_HIGH_SCORES); // Ensure max length
+
+    updateHighScoreDisplay(); // Update display after loading/normalizing
+}
+
+function saveTopScores() {
+    try {
+        localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(topScores));
+    } catch (e) {
+        console.error("Error saving high scores:", e);
+    }
+}
+
+function isTopScore(currentScore) {
+    if (topScores.length < MAX_HIGH_SCORES) {
+        return true; // Always a top score if list isn't full
+    }
+    // Check against the lowest score in the current top list
+    return currentScore > topScores[MAX_HIGH_SCORES - 1].score;
+}
+
+function addTopScore(initials, currentScore) {
+    initials = initials.toUpperCase().padEnd(3, '-').substring(0, 3);
+    topScores.push({ initials: initials, score: currentScore });
+    topScores.sort((a, b) => b.score - a.score); // Sort descending
+    topScores = topScores.slice(0, MAX_HIGH_SCORES); // Keep only top scores
+    saveTopScores();
+    updateHighScoreDisplay(); // Update display on title screen
+}
+
+function updateHighScoreDisplay() {
+    const listItems = highScoreListElement.querySelectorAll('li');
+    listItems.forEach((item, index) => {
+        if (topScores[index]) {
+            item.querySelector('.initials').textContent = topScores[index].initials;
+            item.querySelector('.score').textContent = topScores[index].score;
+        } else {
+             // Should not happen if loadTopScores initializes correctly
+            item.querySelector('.initials').textContent = '---';
+            item.querySelector('.score').textContent = '0';
+        }
+    });
+}
+
 // --- Initialization ---
-async function init() { // Make init async
-    // Preload assets first
+async function init() {
+    // Load high scores first
+    loadTopScores();
+
+    // Preload assets
     await preloadAssets();
 
-    // Initialize dimensions based on window size
-    GAME_WIDTH = window.innerWidth;
-    GAME_HEIGHT = window.innerHeight;
+    // Initialize dimensions are now const
+    // GAME_WIDTH = window.innerWidth; // Removed
+    // GAME_HEIGHT = window.innerHeight; // Removed
 
     // Scene
     scene = new THREE.Scene();
@@ -118,7 +197,6 @@ async function init() { // Make init async
     // --- Add Border ---
     const halfW = GAME_WIDTH / 2;
     const halfH = GAME_HEIGHT / 2;
-    // Use an updatable geometry
     const borderPoints = new Float32Array([
         -halfW,  halfH, 0, // Top-left
          halfW,  halfH, 0, // Top-right
@@ -129,7 +207,7 @@ async function init() { // Make init async
     const borderGeometry = new THREE.BufferGeometry();
     borderGeometry.setAttribute('position', new THREE.BufferAttribute(borderPoints, 3));
     const borderMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
-    borderLine = new THREE.Line(borderGeometry, borderMaterial); // Use Line, not LineLoop for easy update
+    borderLine = new THREE.Line(borderGeometry, borderMaterial); // Use Line
     scene.add(borderLine);
     // --- End Border ---
 
@@ -137,7 +215,7 @@ async function init() { // Make init async
     const starQty = 500;
     const starGeometry = new THREE.BufferGeometry();
     const starPositions = [];
-    const starSpread = GAME_WIDTH * 1.5; // Spread stars wider than game area
+    const starSpread = GAME_WIDTH * 1.5; // Adjust spread based on new fixed width
     const starDepth = 500; // How deep the starfield goes
 
     for (let i = 0; i < starQty; i++) {
@@ -158,60 +236,83 @@ async function init() { // Make init async
     scene.add(stars);
     // --- End Starfield ---
 
-    // Create Ship
-    ship = new Ship();
+    // Initial UI state
+    startScreen.style.display = 'flex';
+    scoreDisplay.style.display = 'none';
+    livesDisplay.style.display = 'none';
+    gameOverScreen.style.display = 'none';
 
-    // Start Game
-    resetGame();
+    // Add Event Listeners
     addEventListeners();
 
-    // Add Resize Listener
-    window.addEventListener('resize', onWindowResize, false);
-
-    gameLoop();
+    gameLoop(); // Start loop
 }
 
-// --- Resize Handler ---
-function onWindowResize() {
-    // Update dimensions
-    GAME_WIDTH = window.innerWidth;
-    GAME_HEIGHT = window.innerHeight;
+// --- Game State Management ---
+function startGame() {
+    gameState = 'playing';
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+    scoreDisplay.style.display = 'block';
+    livesDisplay.style.display = 'block';
+    resetGame(); // Initialize game elements
+}
 
-    // Update camera
-    camera.left = -GAME_WIDTH / 2;
-    camera.right = GAME_WIDTH / 2;
-    camera.top = GAME_HEIGHT / 2;
-    camera.bottom = -GAME_HEIGHT / 2;
-    camera.updateProjectionMatrix();
+function showTitleScreen() {
+    gameState = 'titleScreen';
+    loadTopScores();
+    updateHighScoreDisplay();
+    startScreen.style.display = 'flex';
+    gameOverScreen.style.display = 'none';
+    scoreDisplay.style.display = 'none';
+    livesDisplay.style.display = 'none';
 
-    // Update renderer
-    renderer.setSize(GAME_WIDTH, GAME_HEIGHT);
+     // Clean up any leftover game objects (optional but good practice)
+    if (ship && ship.mesh) scene.remove(ship.mesh);
+    bullets.forEach(b => scene.remove(b.mesh));
+    bullets = [];
+    asteroids.forEach(a => scene.remove(a.mesh));
+    asteroids = [];
+    ship = null; // Ensure ship is cleared
+}
 
-    // Update border geometry
-    const halfW = GAME_WIDTH / 2;
-    const halfH = GAME_HEIGHT / 2;
-    const positions = borderLine.geometry.attributes.position.array;
+function showGameOver(playerScore) {
+    gameState = 'gameOver';
+    scoreDisplay.style.display = 'none';
+    livesDisplay.style.display = 'none';
+    gameOverScreen.style.display = 'block';
 
-    // Top-left (0, 1, 2)
-    positions[0] = -halfW; positions[1] = halfH;
-    // Top-right (3, 4, 5)
-    positions[3] = halfW; positions[4] = halfH;
-    // Bottom-right (6, 7, 8)
-    positions[6] = halfW; positions[7] = -halfH;
-    // Bottom-left (9, 10, 11)
-    positions[9] = -halfW; positions[10] = -halfH;
-    // Close loop point (12, 13, 14)
-    positions[12] = -halfW; positions[13] = halfH;
+    if (isTopScore(playerScore)) {
+        // Show initials input
+        finalScoreDisplay.textContent = playerScore;
+        gameOverMessage.style.display = 'none';
+        newHighScoreInput.style.display = 'block';
+        initialsInput.value = '';
+        initialsInput.focus();
+    } else {
+        // Show standard game over message
+        gameOverMessage.querySelector('p').textContent = `Final Score: ${playerScore}\nPress R to Return to Title`;
+        gameOverMessage.style.display = 'block';
+        newHighScoreInput.style.display = 'none';
+    }
+}
 
-    borderLine.geometry.attributes.position.needsUpdate = true;
+function handleSubmitScore() {
+     const initials = initialsInput.value.trim();
+     if (initials) { // Check if not empty
+         addTopScore(initials, score); // Use the final game score
+         showTitleScreen(); // Go back to title after submitting
+     } else {
+         // Optional: Show error or just default
+         addTopScore("AAA", score); 
+         showTitleScreen();
+     }
 }
 
 function resetGame() {
     score = 0;
     lives = 3;
     level = 0;
-    gameOver = false;
-    gameOverDisplay.style.display = 'none';
     updateUI();
 
     // Clear existing objects from scene and arrays
@@ -220,12 +321,11 @@ function resetGame() {
     asteroids.forEach(a => scene.remove(a.mesh));
     asteroids = [];
 
-    // Remove old ship mesh if resetting
+    // Remove old ship mesh if resetting (shouldn't exist if coming from title)
     if (ship && ship.mesh) {
-        scene.remove(ship.mesh); 
-        // No flame mesh to remove anymore
+        scene.remove(ship.mesh);
     }
-    ship = new Ship(); // Create new ship instance
+    ship = new Ship(); // Create NEW ship instance for the game
     newLevel(); // Start level 1
 }
 
@@ -361,8 +461,7 @@ class Ship {
                 lives--;
                 updateUI();
                 if (lives <= 0) {
-                    gameOver = true;
-                    gameOverDisplay.style.display = 'block';
+                    showGameOver(score); // Call new game over handler
                 } else {
                     this.respawn();
                 }
@@ -564,7 +663,6 @@ class Asteroid {
 
 function newLevel() {
     level++;
-    // ship.respawn(); // Already respawned in resetGame or after death
     createAsteroids();
     updateUI(); // Update score/lives display maybe for level start?
 }
@@ -642,74 +740,98 @@ function checkCollisions() {
     }
 }
 
-
 // --- Event Listeners ---
 function addEventListeners() {
-    window.addEventListener('keydown', (event) => {
-        if (gameOver) {
-            if (event.key === 'r' || event.key === 'R') {
-                 resetGame();
-            }
-            return;
+    // Submit Button Listener
+    submitScoreButton.addEventListener('click', handleSubmitScore);
+    // Optional: Allow Enter key in input field
+    initialsInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent form submission if inside one
+            handleSubmitScore();
         }
+    });
 
-        // Allow controls only if ship is alive (not exploding)
-        if (!ship.isAlive() && ship.explodeTime > 0) return;
+    window.addEventListener('keydown', (event) => {
+        switch (gameState) {
+            case 'titleScreen':
+                if (event.key === ' ' || event.key === 'Spacebar') {
+                    startGame();
+                }
+                break;
+            case 'playing':
+                // Allow controls only if ship is alive (not exploding)
+                if (!ship || (!ship.isAlive() && ship.explodeTime > 0)) return;
 
-        switch(event.key) {
-            case 'ArrowRight': ship.rotation = -1; break; // Rotate visually Counter-Clockwise (?)
-            case 'ArrowLeft': ship.rotation = 1; break;  // Rotate visually Clockwise (?)
-            case 'ArrowUp': ship.thrusting = true; break;
-            case 'Control': ship.hyperspace(); break;
-            case ' ':       // Spacebar
-            case 'Spacebar': ship.shoot(); break;
+                switch(event.key) {
+                    case 'ArrowRight': ship.rotation = -1; break;
+                    case 'ArrowLeft': ship.rotation = 1; break;
+                    case 'ArrowUp': ship.thrusting = true; break;
+                    case 'Control': ship.hyperspace(); break;
+                    case ' ':
+                    case 'Spacebar': ship.shoot(); break;
+                }
+                break;
+            case 'gameOver':
+                 // Only allow restart if the initials input is NOT shown
+                 if (newHighScoreInput.style.display === 'none') { 
+                    if (event.key === 'r' || event.key === 'R') {
+                        showTitleScreen(); 
+                    }
+                }
+                break;
         }
     });
 
     window.addEventListener('keyup', (event) => {
-        if (gameOver || (!ship.isAlive() && ship.explodeTime > 0)) return;
+        if (gameState !== 'playing') return; // Only handle keyup during play
+        if (!ship || (!ship.isAlive() && ship.explodeTime > 0)) return;
 
         switch(event.key) {
-            case 'ArrowRight': if (ship.rotation < 0) ship.rotation = 0; break; // Stop visual CCW
-            case 'ArrowLeft': if (ship.rotation > 0) ship.rotation = 0; break; // Stop visual CW
+            case 'ArrowRight': if (ship.rotation < 0) ship.rotation = 0; break;
+            case 'ArrowLeft': if (ship.rotation > 0) ship.rotation = 0; break;
             case 'ArrowUp': ship.thrusting = false; break;
-            // Spacebar/Ctrl don't need keyup handling for instant actions
         }
     });
 }
 
 // --- Game Loop ---
 function gameLoop() {
-    if (gameOver) {
-        renderer.render(scene, camera);
-        requestAnimationFrame(gameLoop);
-        return;
-    }
-
-    // Update Game Objects
-    ship.update();
-
-    for (let i = bullets.length - 1; i >= 0; i--) {
-        if (!bullets[i]) continue;
-        bullets[i].update();
-        if (bullets[i].lifetime <= 0) {
-            if (bullets[i].mesh) scene.remove(bullets[i].mesh);
-            bullets.splice(i, 1);
-        }
-    }
-
-    for (let i = asteroids.length - 1; i >= 0; i--) {
-         if (!asteroids[i]) continue;
-        asteroids[i].update();
-    }
-
-    // Check Collisions
-    checkCollisions();
-
-    // Render Scene
-    renderer.render(scene, camera);
-
     requestAnimationFrame(gameLoop);
+
+    switch (gameState) {
+        case 'titleScreen':
+             renderer.render(scene, camera); 
+            break;
+        case 'playing':
+            // --- Normal Game Update Logic --- 
+            if (!ship) return; // Should not happen, but safety check
+
+            ship.update();
+
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                if (!bullets[i]) continue;
+                bullets[i].update();
+                if (bullets[i].lifetime <= 0) {
+                    if (bullets[i].mesh) scene.remove(bullets[i].mesh);
+                    bullets.splice(i, 1);
+                }
+            }
+
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                if (!asteroids[i]) continue;
+                asteroids[i].update();
+            }
+
+            checkCollisions();
+            renderer.render(scene, camera);
+            // --- End Normal Game Update Logic --- 
+            break;
+        case 'gameOver':
+            // Keep rendering the final scene state, UI is handled by CSS/DOM
+            renderer.render(scene, camera);
+            break;
+    }
 }
 
 // --- Start the game ---
