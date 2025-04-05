@@ -3,11 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asteroids</title>
+    <title>Asteroids 3D</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <script src="script.js"></script>
+    <!-- Score and Lives Display -->
+    <div id="scoreDisplay">Score: 0</div>
+    <div id="livesDisplay">Lives: 3</div>
+    <div id="gameOverDisplay" style="display: none;">
+        GAME OVER<br>Press R to Restart
+    </div>
+    <!-- Three.js library -->
+    <!-- Your game script -->
+    <script type="module" src="script.js"></script>
 </body>
 </html>
